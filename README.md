@@ -1,7 +1,8 @@
-# RESTful JSON API With Rails 6 - Ver. 1
+# RESTful JSON API With Rails 6 - Ver. 2
 
 Example based on the tutorial:
-> [___Build a RESTful JSON API With Rails 5 - Part One___](https://www.digitalocean.com/community/tutorials/build-a-restful-json-api-with-rails-5-part-one)
+> [___Build a RESTful JSON API With Rails 5 - Part Two___](https://www.digitalocean.com/community/tutorials/build-a-restful-json-api-with-rails-5-part-two)
+
 
 #### Using
   - `Ruby 2.5.5`
@@ -9,32 +10,10 @@ Example based on the tutorial:
 
 #### Sumary
 
-+ [Requirements](#requirements)
-    - [Data](#data)
-    - [API Endpoints](#api-endpoints)
-+ [Project Setup](#project-setup)
-    - [Dependencies](#dependencies)
-    - [Prepare Test Environment](#prepare-test-environment)
-+ [Models and Model tests](#models-and-model-tests)
-    - [Generating the models](#generating-the-models)
-    - [Model specs](#model-specs)
-+ [Controllers](#controllers)
-    - [Generating the Controller](#generating-the-controller)
-    - [Todo Request specs](#todo-request-specs)
-    - [Todo Controller](#todo-controller)
-    - [Item Request specs](#item-request-specs)
-    - [Item Controller](#item-controller)
-
 ---
 ## Requirements
 
 ### Data
-- **Todo** : *(title:string, created_by:string)*
-- **Item** : *(name:string, done:boolean)*
-
-A **Todo**, has zero or many **Item** records
-
-An **Item**, has only one **Item**
 
 ### API Endpoints
 
@@ -53,175 +32,96 @@ An **Item**, has only one **Item**
 
 ---
 ## Project Setup
-Generate a new project `todos-api` by running:
-```sh
-rails new todos-api --api -T
-```
-#### Dependencies
-The gems used
 
-- rspec-rails - Testing framework.
-- factorybotrails - A fixtures replacement with a more straightforward syntax.
-- shoulda_matchers - Provides RSpec with additional matchers.
-- database_cleaner - Cleans the test database to ensure a clean state in each test suite.
-- faker - A library for generating fake data.
-
----
-In `Gemfile`:
-
-Add `rspec-rails` to both the `:development` and `:test groups`.
-
-> ___./Gemfile___
+>___./Gemfile___
 ```ruby
-group :development, :test do
-  # [...]
-  gem 'rspec-rails'
-end
+# [...]
+# Use Active Model has_secure_password
+gem 'bcrypt', '~> 3.1.7'
+# [...]
 ```
 
-Add `factory_bot_rails`, `shoulda_matchers`, `faker` and `database_cleaner` to the `:test group`.
-> ___./Gemfile___
-```ruby
-group :test do
-  gem 'database_cleaner', '~> 2.0.1'
-  gem 'factory_bot_rails', '~> 4.11.1' # version '~> 5.0' change setups
-  gem 'faker', '~> 2.19.0'
-  gem 'shoulda-matchers', '~> 4.5.1'  
-end
-```
-
-Install gems:
+Install the gem.
 ```sh
 bundle install
- ```
+```
 
 ---
 ### Prepare Test Environment
 
-Initialize the spec directory (where tests will reside)
-```sh
-rails generate rspec:install
-```
-Create a factory directory for define the 'model factories'. (the factory bot uses it as the default directory).
-```sh
-mkdir spec/factories
-```
-
-In `spec/rails_helper.rb`
->___./spec/rails_helper.rb___
-```ruby
-# require database cleaner at the top level
-require 'database_cleaner'
-
-# [...]
-# configure shoulda matchers to use rspec as the test framework
-# and full matcher libraries for rails
-Shoulda::Matchers.configure do |config|
-  config.integrate do |with|
-    with.test_framework :rspec
-    with.library :rails
-  end
-end
-
-RSpec.configure do |config|
-  # [...]  
-  # add `FactoryBot` methods
-  config.include FactoryBot::Syntax::Methods
-  config.include RequestSpecHelper, type: :request
-
-  # start by truncating all the tables
-  # but then use the faster transaction strategy the rest of the time.
-  config.before(:suite) do
-    DatabaseCleaner.clean_with(:truncation)
-    DatabaseCleaner.strategy = :transaction
-  end
-  # start the transaction strategy as examples are run
-  config.around(:each) do |example|
-    DatabaseCleaner.cleaning do
-      example.run
-    end
-  end
-  # [...]
-end
-```
+---
 
 ---
+
+---
+
 ## Models and Model tests
 
-### Generating the models
+### Generating the model
 
-`Todo` model
+`User` model
 ```sh
-rails g model Todo title:string created_by:string
+rails g model User name:string email:string password_digest:string
 ```
-`Item` model
-```sh
-rails g model Item name:string done:boolean todo:references
-
-```
-
-> The generator invokes `active record` and `rspec` to generate the migration, model, and spec respectively.
-> `todo:references` will do the following:
->> - Add a `foreign key` column `todo_id` to the `items` table
->> - Setup a `belongs_to` association in the `Item` model
->
 
 Run the migrations.
 ```sh
 rails db:migrate
 ```
 
+make sure the test environment is ready
+```sh
+rails db:test:prepare
+```
+
 ### Model specs
-> ___./spec/models/todo_spec.rb___
+> ___./spec/models/user_spec.rb___
 ```ruby
 require 'rails_helper'
 
-# Test suite for the Todo model
-RSpec.describe Todo, type: :model do
+# Test suite for User model
+RSpec.describe User, type: :model do
   # Association test
-  # ensure Todo model has a 1:m relationship with the Item model
-  it { should have_many(:items).dependent(:destroy) }
+  # ensure User model has a 1:m relationship with the Todo model
+  it { should have_many(:todos) }
   # Validation tests
-  # ensure columns title and created_by are present before saving
-  it { should validate_presence_of(:title) }
-  it { should validate_presence_of(:created_by) }
-end
-```
->___./spec/models/item_spec.rb___
-```ruby
-require 'rails_helper'
-
-# Test suite for the Item model
-RSpec.describe Item, type: :model do
-  # Association test
-  # ensure an item record belongs to a single todo record
-  it { should belong_to(:todo) }
-  # Validation test
-  # ensure column name is present before saving
+  # ensure name, email and password_digest are present before save
   it { should validate_presence_of(:name) }
+  it { should validate_presence_of(:email) }
+  it { should validate_presence_of(:password_digest) }
 end
 ```
->___./app/models/todo.rb___
-```ruby
-class Todo < ApplicationRecord
-  # model association
-  has_many :items, dependent: :destroy
 
-  # validations
-  validates_presence_of :title, :created_by
-end
+Add a user factory
+```sh
+touch spec/factories/users.rb
 ```
->___./app/models/item.rb___
-```ruby
-class Item < ApplicationRecord
-  # model association
-  belongs_to :todo
 
-  # validation
-  validates_presence_of :name
+>___./spec/factories/users.rb___
+```ruby
+FactoryBot.define do
+  factory :user do
+    name { Faker::Name.name }
+    email 'foo@bar.com'
+    password 'foobar'
+  end
 end
 ```
-Execute the specs:
+
+>___./app/models/user.rb___
+```ruby
+class User < ApplicationRecord
+  # encrypt password
+  has_secure_password
+
+  # Model associations
+  has_many :todos, foreign_key: :created_by
+  # Validations
+  validates_presence_of :name, :email, :password_digest
+end
+```s
+
+Execute the specs:  
 ```sh
 bundle exec rspec
 ```
