@@ -3,19 +3,59 @@
 Example based on the tutorial:
 > [___Build a RESTful JSON API With Rails 5 - Part Two___](https://www.digitalocean.com/community/tutorials/build-a-restful-json-api-with-rails-5-part-two)
 
+Continuation of branch
+> [***`parte_1`***](https://github.com/chocolatito/todo-api/tree/parte_1)
+
 
 #### Using
   - `Ruby 2.5.5`
   - `Rails 6.1.4.1`
 
 #### Sumary
++ [Requirements](#requirements)
+    - [Data](#data)
+    - [API Endpoints](#api-endpoints)
++ [Project Setup](#project-setup)
+    - [Dependencies](#dependencies)
+    - [Prepare Test Environment](#prepare-test-environment)
++ [User Authentication](#user-authentication)
+    - [Genete Model](#generate-model)
+    - [Model specs](#)
++ [Token web JSON](#token-web-json)
+    - [JsonWebToken class and ExceptionHandler module](#jsonwebtoken-class-and-exceptionhandler-module)
+    - [Authorize API Request](#authorize-api-request)
++ [Authenticate Users](#authenticate-users)
++ [Authentication Controller](#authentication-controller)
+    - [User controller](#user-controller)
 
 ---
 ## Requirements
 
 ### Data
+- **Todo** : *(title:string, created_by:string)*
+- **Item** : *(name:string, done:boolean)*
+- **User** : *(name:string, email:string, password_digest:string)*
+
+A **Todo**, has zero or many **Item** records
+
+An **Item**, has only one **Item**
+
+An **User**, has zero or many **Todo** records
+
+A **Todo**, has one **User** records
 
 ### API Endpoints
+
+Does not require
+- __Log in__
+- __Authorization through Json Web Token__
+
+|**Verb**|**URI_Pattern**|**Controller#Actio**|
+|------------|------------|------------|
+|`POST` | */signup* | __users#create__ |
+|`POST` | */auth/login* | __authentication#authenticate__ |
+
+Require __Log in__ and __Authorization through Json Web Token__
 
 |**Verb**|**URI_Pattern**|**Controller#Actio**|
 |------------|------------|------------|
@@ -29,6 +69,7 @@ Example based on the tutorial:
 |`GET` |*/todos/:todo_id/items/:id* | __items#show__ |
 |`PUT` |*/todos/:todo_id/items/:id* |  __items#update__ |
 |`DELETE` |*/todos/:todo_id/items/:id* |  __items#destroy__ |
+
 
 ---
 ## Project Setup
@@ -64,16 +105,10 @@ RSpec.configure do |config|
 end
 ```
 
-
 ---
+## User Authentication
 
----
-
----
-
-## Models and Model tests
-
-### Generating the model
+### Genete Model
 
 `User` model
 ```sh
@@ -194,7 +229,6 @@ This singleton wraps `JWT` to provide token encoding and decoding methods.
 - The `encoding` method: Will be responsible for creating tokens based on a payload (user id) and expiration period. It use Rails project secret key that as secret to sign tokens.
 - The `decode` method: Accepts a token and attempts to decode it using the same secret used in the encoding. In the event decoding fails, be it due to expiration or validation, JWT will raise respective exceptions which will be caught and handled by the `ExceptionHandler` module.
 
-
 ### Authorize API Request
 This class will be responsible for authorizing all API requests making sure that all requests have a valid token and user payload.
 
@@ -213,7 +247,6 @@ mkdir spec/auth && \
 touch spec/auth/authorize_api_request_spec.rb
 ```
 
- 
 Define it's specifications
 >***./spec/auth/authorize_api_request_spec.rb***
 ```ruby
@@ -464,66 +497,374 @@ Run the auth specs
 bundle exec rspec spec/auth -fd
 ```
 
-
-## Authenticate User
-
 ---
----
----
+## Authenticate Users
 
-### Todo Request specs
-Generating controllers by default generates controller specs.
-However, However, it is preferable to use request specifications.
->According to RSpec, the official recommendation of the Rails team and the RSpec core team is to write request specs instead.
+Create files
+```sh
+touch app/auth/authenticate_user.rb && \
+touch spec/auth/authenticate_user_spec.rb
+```
 
-If not exist, Add a `requests` folder to the `spec` directory
-```sh
-mkdir spec/requests
-```
-The corresponding spec files.
-```sh
-touch spec/requests/{todos_spec.rb,items_spec.rb}
-```
-Add the model factories which will provide the test data.
-```sh
-touch spec/factories/{todos.rb,items.rb}
-```
-Define the factories.
->___./spec/factories/todos.rb___
+Define it's specifications.
+>***./spec/auth/authenticate_user_spec.rb***
 ```ruby
-FactoryBot.define do
-  factory :todo do
-    title { Faker::Lorem.word }
-    created_by { Faker::Number.number(10) }
+require 'rails_helper'
+
+RSpec.describe AuthenticateUser do
+  # create test user
+  let(:user) { create(:user) }
+  # valid request subject
+  subject(:valid_auth_obj) { described_class.new(user.email, user.password) }
+  # invalid request subject
+  subject(:invalid_auth_obj) { described_class.new('foo', 'bar') }
+
+  # Test suite for AuthenticateUser#call
+  describe '#call' do
+    # return token when valid request
+    context 'when valid credentials' do
+      it 'returns an auth token' do
+        token = valid_auth_obj.call
+        expect(token).not_to be_nil
+      end
+    end
+
+    # raise Authentication Error when invalid request
+    context 'when invalid credentials' do
+      it 'raises an authentication error' do
+        expect { invalid_auth_obj.call }
+          .to raise_error(
+            ExceptionHandler::AuthenticationError,
+            /Invalid credentials/
+          )
+      end
+    end
   end
 end
 ```
->___./spec/factories/items.rb___
+
+The `AuthenticateUser` service accepts a user email and password, checks if they are valid, and then creates a token with the user id as the payload.
+
+Define `AuthenticateUser` class.
+>***./app/auth/authenticate_user.rb***
 ```ruby
-FactoryBot.define do
-  factory :item do
-    name { Faker::Movies::Lebowski.character }
-    done false
-    todo_id nil
+class AuthenticateUser
+  def initialize(email, password)
+    @email = email
+    @password = password
+  end
+
+  # Service entry point
+  def call
+    JsonWebToken.encode(user_id: user.id) if user
+  end
+
+  private
+
+  attr_reader :email, :password
+
+  # verify user credentials
+  def user
+    user = User.find_by(email: email)
+    return user if user && user.authenticate(password)
+    # raise Authentication error if credentials are invalid
+    raise(ExceptionHandler::AuthenticationError, Message.invalid_credentials)
   end
 end
 ```
-By wrapping Faker methods in a block, we ensure that Faker generates dynamic data every time the factory is invoked.
-This way, we always have unique data.
 
-> ___./spec/requests/todos_spec.rb___
+Run the auth specs
+```sh
+bundle exec rspec spec/auth -fd
+```
+
+---
+## Authentication Controller
+This controller will be responsible for orchestrating the authentication process making use of the auth service
+
+generate the Authentication Controller
+```sh
+rails g controller Authentication
+```
+
+Authentication spec
+>***./spec/requests/authentication_spec.rb***
+```ruby
+require 'rails_helper'
+
+RSpec.describe 'Authentication', type: :request do
+  # Authentication test suite
+  describe 'POST /auth/login' do
+    # create test user
+    let!(:user) { create(:user) }
+    # set headers for authorization
+    let(:headers) { valid_headers.except('Authorization') }
+    # set test valid and invalid credentials
+    let(:valid_credentials) do
+      {
+        email: user.email,
+        password: user.password
+      }.to_json
+    end
+    let(:invalid_credentials) do
+      {
+        email: Faker::Internet.email,
+        password: Faker::Internet.password
+      }.to_json
+    end
+
+    # set request.headers to our custon headers
+    # before { allow(request).to receive(:headers).and_return(headers) }
+
+    # returns auth token when request is valid
+    context 'When request is valid' do
+      before { post '/auth/login', params: valid_credentials, headers: headers }
+
+      it 'returns an authentication token' do
+        expect(json['auth_token']).not_to be_nil
+      end
+    end
+
+    # returns failure message when request is invalid
+    context 'When request is invalid' do
+      before { post '/auth/login', params: invalid_credentials, headers: headers }
+
+      it 'returns a failure message' do
+        expect(json['message']).to match(/Invalid credentials/)
+      end
+    end
+  end
+end
+```
+Authentication controller
+>***.app/controllers/authentication_controller.rb***
+```ruby
+class AuthenticationController < ApplicationController
+  # return auth token once user is authenticated
+  def authenticate
+    auth_token =
+      AuthenticateUser.new(auth_params[:email], auth_params[:password]).call
+    json_response(auth_token: auth_token)
+  end
+
+  private
+
+  def auth_params
+    params.permit(:email, :password)
+  end
+end
+```
+
+The authentication controller should expose an _/auth/login_ endpoint that accepts user credentials and returns a **JSON** response with the result.
+
+Add routing for authentication action
+>***./config/routes.rb***
+```ruby
+Rails.application.routes.draw do
+  # [...]
+  post 'auth/login', to: 'authentication#authenticate'
+end
+```
+
+### User controller
+Generate users controller
+```sh
+rails g controller Users
+```
+
+Generate users request spec
+```sh
+touch spec/requests/users_spec.rb
+```
+
+User signup spec
+>***./spec/requests/users_spec.rb***
+```ruby
+require 'rails_helper'
+
+RSpec.describe 'Users API', type: :request do
+  let(:user) { build(:user) }
+  let(:headers) { valid_headers.except('Authorization') }
+  let(:valid_attributes) do
+    attributes_for(:user, password_confirmation: user.password)
+  end
+
+  # User signup test suite
+  describe 'POST /signup' do
+    context 'when valid request' do
+      before { post '/signup', params: valid_attributes.to_json, headers: headers }
+
+      it 'creates a new user' do
+        expect(response).to have_http_status(201)
+      end
+
+      it 'returns success message' do
+        expect(json['message']).to match(/Account created successfully/)
+      end
+
+      it 'returns an authentication token' do
+        expect(json['auth_token']).not_to be_nil
+      end
+    end
+
+    context 'when invalid request' do
+      before { post '/signup', params: {}, headers: headers }
+
+      it 'does not create a new user' do
+        expect(response).to have_http_status(422)
+      end
+
+      it 'returns failure message' do
+        expect(json['message'])
+          .to match(/Validation failed: Password can't be blank, Name can't be blank, Email can't be blank, Password digest can't be blank/)
+      end
+    end
+  end
+end
+```
+
+The user controller should expose a _/signup_ endpoint that accepts user information and returns a JSON response with the result.
+
+Add the signup route
+>***./config/routes.rb***
+```ruby
+Rails.application.routes.draw do
+  # [...]
+  post 'signup', to: 'users#create'
+end
+```
+
+Define `User` controller
+>***./app/controllers/users_controller.rb***
+```ruby
+class UsersController < ApplicationController
+  # POST /signup
+  # return authenticated token upon signup
+  def create
+    user = User.create!(user_params)
+    auth_token = AuthenticateUser.new(user.email, user.password).call
+    response = { message: Message.account_created, auth_token: auth_token }
+    json_response(response, :created)
+  end
+
+  private
+
+  def user_params
+    params.permit(
+      :name,
+      :email,
+      :password,
+      :password_confirmation
+    )
+  end
+end
+```
+
+***The users’ controller attempts to create a user and returns a JSON response with the result. We use Active Record’s create! method so that in the event there’s an error, an exception will be raised and handled in the exception handler.***
+
+***One more thing, we’ve wired up the user authentication bit but our API is still open; it does not authorize requests with a token***
+
+***To fix this, we have to make sure that on every request (except authentication) our API checks for a valid token. To achieve this, we’ll implement a callback in the application controller that authenticates every request. Since all controllers inherit from the application controller, it will be propagated to all controllers.***
+
+Create application controller spec
+```sh
+mkdir spec/controllers && \
+touch spec/controllers/application_controller_spec.rb
+```
+Define controller spec
+>***./spec/controllers/application_controller_spec.rb***
+```ruby
+require "rails_helper"
+
+RSpec.describe ApplicationController, type: :controller do
+  # create test user
+  let!(:user) { create(:user) }
+   # set headers for authorization
+  let(:headers) { { 'Authorization' => token_generator(user.id) } }
+  let(:invalid_headers) { { 'Authorization' => nil } }
+
+  describe "#authorize_request" do
+    context "when auth token is passed" do
+      before { allow(request).to receive(:headers).and_return(headers) }
+
+      # private method authorize_request returns current user
+      it "sets the current user" do
+        expect(subject.instance_eval { authorize_request }).to eq(user)
+      end
+    end
+
+    context "when auth token is not passed" do
+      before do
+        allow(request).to receive(:headers).and_return(invalid_headers)
+      end
+
+      it "raises MissingToken error" do
+        expect { subject.instance_eval { authorize_request } }.
+          to raise_error(ExceptionHandler::MissingToken, /Missing token/)
+      end
+    end
+  end
+end
+```
+Define controller
+>***./app/controllers/application_controller.rb***
+```ruby
+class ApplicationController < ActionController::API
+  include Response
+  include ExceptionHandler
+
+  # called before every action on controllers
+  before_action :authorize_request
+  attr_reader :current_user
+
+  private
+
+  # Check for valid request token and return user
+  def authorize_request
+    @current_user = (AuthorizeApiRequest.new(request.headers).call)[:user]
+  end
+end
+```
+Update `AuthenticationController` and `UsersController`, adding `skip_before_action`
+>***./app/controllers/authentication_controller.rb***
+```ruby
+class AuthenticationController < ApplicationController
+  skip_before_action :authorize_request, only: :authenticate
+  # [...]
+end
+```
+
+>***./app/controllers/users_controller.rb***
+```ruby
+class UsersController < ApplicationController
+  skip_before_action :authorize_request, only: :create
+  # [...]
+end
+```
+Update `Todo` spec and controller
+>***./spec/requests/todos_spec.rb***
 ```ruby
 require 'rails_helper'
 
 RSpec.describe 'Todos API', type: :request do
-  # initialize test data
-  let!(:todos) { create_list(:todo, 10) }
+  # # initialize test data
+  # let!(:todos) { create_list(:todo, 10) }
+  # let(:todo_id) { todos.first.id }
+  # ________________________________
+  # add todos owner
+  let(:user) { create(:user) }
+  let!(:todos) { create_list(:todo, 10, created_by: user.id) }
   let(:todo_id) { todos.first.id }
+  # authorize request
+  let(:headers) { valid_headers }
 
   # Test suite for GET /todos
   describe 'GET /todos' do
-    # make HTTP get request before each example
-    before { get '/todos' }
+    # # make HTTP get request before each example
+    # before { get '/todos' }
+    # ___________________________
+    # update request with headers
+    before { get '/todos', params: {}, headers: headers }
 
     it 'returns todos' do
       # Note `json` is a custom helper to parse JSON responses
@@ -538,7 +879,9 @@ RSpec.describe 'Todos API', type: :request do
 
   # Test suite for GET /todos/:id
   describe 'GET /todos/:id' do
-    before { get "/todos/#{todo_id}" }
+    # before { get "/todos/#{todo_id}" }
+    # ______________________________________________________________
+    before { get "/todos/#{todo_id}", params: {}, headers: headers }
 
     context 'when the record exists' do
       it 'returns the todo' do
@@ -566,11 +909,18 @@ RSpec.describe 'Todos API', type: :request do
 
   # Test suite for POST /todos
   describe 'POST /todos' do
-    # valid payload
-    let(:valid_attributes) { { title: 'Learn Elm', created_by: '1' } }
+    # # valid payload
+    # let(:valid_attributes) { { title: 'Learn Elm', created_by: '1' } }
+    # __________________________________________________________________
+    let(:valid_attributes) do
+      # send json payload
+      { title: 'Learn Elm', created_by: user.id.to_s }.to_json
+    end
 
     context 'when the request is valid' do
-      before { post '/todos', params: valid_attributes }
+      # before { post '/todos', params: valid_attributes }
+      # __________________________________________________________________
+      before { post '/todos', params: valid_attributes, headers: headers }
 
       it 'creates a todo' do
         expect(json['title']).to eq('Learn Elm')
@@ -582,25 +932,35 @@ RSpec.describe 'Todos API', type: :request do
     end
 
     context 'when the request is invalid' do
-      before { post '/todos', params: { title: 'Foobar' } }
+      # before { post '/todos', params: { title: 'Foobar' } }
+      # _____________________________________________________
+      let(:invalid_attributes) { { title: nil }.to_json }
+      before { post '/todos', params: invalid_attributes, headers: headers }
 
       it 'returns status code 422' do
         expect(response).to have_http_status(422)
       end
 
       it 'returns a validation failure message' do
-        expect(response.body)
-          .to match(/Validation failed: Created by can't be blank/)
+        # expect(response.body)
+        #   .to match(/Validation failed: Created by can't be blank/)
+        # ____________________
+        expect(json['message'])
+          .to match(/Validation failed: Title can't be blank/)
       end
     end
   end
 
   # Test suite for PUT /todos/:id
   describe 'PUT /todos/:id' do
-    let(:valid_attributes) { { title: 'Shopping' } }
+    # let(:valid_attributes) { { title: 'Shopping' } }
+    # ______________________________________________________
+    let(:valid_attributes) { { title: 'Shopping' }.to_json }
 
     context 'when the record exists' do
-      before { put "/todos/#{todo_id}", params: valid_attributes }
+      # before { put "/todos/#{todo_id}", params: valid_attributes }
+      # ____________________________________________________________________________
+      before { put "/todos/#{todo_id}", params: valid_attributes, headers: headers }
 
       it 'updates the record' do
         expect(response.body).to be_empty
@@ -614,7 +974,9 @@ RSpec.describe 'Todos API', type: :request do
 
   # Test suite for DELETE /todos/:id
   describe 'DELETE /todos/:id' do
-    before { delete "/todos/#{todo_id}" }
+    # before { delete "/todos/#{todo_id}" }
+    # _________________________________________________________________
+    before { delete "/todos/#{todo_id}", params: {}, headers: headers }
 
     it 'returns status code 204' do
       expect(response).to have_http_status(204)
@@ -622,65 +984,29 @@ RSpec.describe 'Todos API', type: :request do
   end
 end
 ```
-`json` in a **custom helper method** which parses the JSON response to a Ruby Hash which is easier to work with in the tests.
-Add the directory and file:
-```sh
-mkdir spec/support && \
-touch spec/support/request_spec_helper.rb
-```
-> ___./spec/support/request_spec_helper___
-```ruby
-module RequestSpecHelper
-  # Parse JSON response to ruby hash
-  def json
-    JSON.parse(response.body)
-  end
-end
-```
-The support directory **is not autoloaded by default**. To enable this
-- In _rails_helper.rb_, comment out the support directory auto-loading
-- Include it as shared module for all request specs in the RSpec configuration block.
->___./spec/rails_helper.rb___
-```ruby
-# [...]
-Dir[Rails.root.join('spec/support/**/*.rb')].each { |f| require f }
-# [...]
-RSpec.configuration do |config|
-  # [...]
-    config.include RequestSpecHelper, type: :request
-  # [...]
-end
-```
 
-### Todo Controller
-Define the routes
-> ___./config/routes.rb___
+>***./app/controllers/todos_controller.rb***
 ```ruby
-Rails.application.routes.draw do
-  resources :todos do
-    resources :items
-  end
-end
-```
-To view the routes:
-```sh
-rails routes
-```
-Define the controller methods
->___./app/controllers/todos_controller.rb___
-```sh
 class TodosController < ApplicationController
   before_action :set_todo, only: %i[show update destroy]
 
   # GET /todos
   def index
-    @todos = Todo.all
+    # @todos = Todo.all
+    # json_response(@todos)
+    # ______________________
+    # get current user todos
+    @todos = current_user.todos
     json_response(@todos)
   end
 
   # POST /todos
   def create
-    @todo = Todo.create!(todo_params)
+    # @todo = Todo.create!(todo_params)
+    # json_response(@todo, :created)
+    # ______________________________________
+    # create todos belonging to current user
+    @todo = current_user.todos.create!(todo_params)
     json_response(@todo, :created)
   end
 
@@ -705,7 +1031,10 @@ class TodosController < ApplicationController
 
   def todo_params
     # whitelist params
-    params.permit(:title, :created_by)
+    # params.permit(:title, :created_by)
+    # _____________________________________________________
+    # remove `created_by` from list of permitted parameters
+    params.permit(:title)
   end
 
   def set_todo
@@ -713,80 +1042,31 @@ class TodosController < ApplicationController
   end
 end
 ```
-The helpers
-- `json_response` which responds with JSON and an HTTP status code (200 by default).
 
-Create *response.rb* file in concerns folder
-```sh
-touch app/controllers/concerns/response.rb
-```
-Define this method
->___./app/controllers/concerns/response.rb___
-```ruby
-module Response
-  def json_response(object, status = :ok)
-    render json: object, status: status
-  end
-end
-```
-
-- `set_todo` - callback method to find a `todo` record by `id`. In the case where the record does not exist, ActiveRecord will throw an exception `ActiveRecord::RecordNotFound`. We’ll rescue from this exception and return a `404` message.
-
-Create *exception_handler.rb* file in concerns folder
-```sh
-touch app/controllers/concerns/exception_handler.rb
-```
-Define this method
->___./app/controllers/concerns/exception_handler.rb___
-```ruby
-module ExceptionHandler
-  # provides the more graceful `included` method
-  extend ActiveSupport::Concern
-
-  included do
-    rescue_from ActiveRecord::RecordNotFound do |e|
-      json_response({ message: e.message }, :not_found)
-    end
-
-    rescue_from ActiveRecord::RecordInvalid do |e|
-      json_response({ message: e.message }, :unprocessable_entity)
-    end
-  end
-end
-```
-Include the modules in the application controller.
->___./app/controllers/application_controller.rb___
-```ruby
-class ApplicationController < ActionController::API
-  include Response
-  include ExceptionHandler
-end
-```
-Run the tests
-```sh
-bundle exec rspec
-```
-Or, only requests
-```sh
-bbundle exec rspec ./spec/requests/
-```
-
-### Item Request specs
-
->___./spec/requests/items_spec.rb___
+Update only `Item` spec
+>***./spec/requests/items_spec.rb***
 ```ruby
 require 'rails_helper'
 
 RSpec.describe 'Items API' do
   # Initialize the test data
-  let!(:todo) { create(:todo) }
+  # let!(:todo) { create(:todo) }
+  # let!(:items) { create_list(:item, 20, todo_id: todo.id) }
+  # let(:todo_id) { todo.id }
+  # let(:id) { items.first.id }
+  # ___________________________
+  let(:user) { create(:user) }
+  let!(:todo) { create(:todo, created_by: user.id) }
   let!(:items) { create_list(:item, 20, todo_id: todo.id) }
   let(:todo_id) { todo.id }
   let(:id) { items.first.id }
+  let(:headers) { valid_headers }
 
   # Test suite for GET /todos/:todo_id/items
   describe 'GET /todos/:todo_id/items' do
-    before { get "/todos/#{todo_id}/items" }
+    # before { get "/todos/#{todo_id}/items" }
+    # ____________________________________________________________________
+    before { get "/todos/#{todo_id}/items", params: {}, headers: headers }
 
     context 'when todo exists' do
       it 'returns status code 200' do
@@ -813,7 +1093,9 @@ RSpec.describe 'Items API' do
 
   # Test suite for GET /todos/:todo_id/items/:id
   describe 'GET /todos/:todo_id/items/:id' do
-    before { get "/todos/#{todo_id}/items/#{id}" }
+    # before { get "/todos/#{todo_id}/items/#{id}" }
+    # __________________________________________________________________________
+    before { get "/todos/#{todo_id}/items/#{id}", params: {}, headers: headers }
 
     context 'when todo item exists' do
       it 'returns status code 200' do
@@ -840,10 +1122,16 @@ RSpec.describe 'Items API' do
 
   # Test suite for PUT /todos/:todo_id/items
   describe 'POST /todos/:todo_id/items' do
-    let(:valid_attributes) { { name: 'Visit Narnia', done: false } }
+    # let(:valid_attributes) { { name: 'Visit Narnia', done: false } }
+    # ______________________________________________________________________
+    let(:valid_attributes) { { name: 'Visit Narnia', done: false }.to_json }
 
     context 'when request attributes are valid' do
-      before { post "/todos/#{todo_id}/items", params: valid_attributes }
+      # before { post "/todos/#{todo_id}/items", params: valid_attributes }
+      # ___________________________________________________________________
+      before do
+        post "/todos/#{todo_id}/items", params: valid_attributes, headers: headers
+      end
 
       it 'returns status code 201' do
         expect(response).to have_http_status(201)
@@ -851,7 +1139,9 @@ RSpec.describe 'Items API' do
     end
 
     context 'when an invalid request' do
-      before { post "/todos/#{todo_id}/items", params: {} }
+      # before { post "/todos/#{todo_id}/items", params: {} }
+      # _____________________________________________________________________
+      before { post "/todos/#{todo_id}/items", params: {}, headers: headers }
 
       it 'returns status code 422' do
         expect(response).to have_http_status(422)
@@ -865,9 +1155,15 @@ RSpec.describe 'Items API' do
 
   # Test suite for PUT /todos/:todo_id/items/:id
   describe 'PUT /todos/:todo_id/items/:id' do
-    let(:valid_attributes) { { name: 'Mozart' } }
+    # let(:valid_attributes) { { name: 'Mozart' } }
+    # ___________________________________________________
+    let(:valid_attributes) { { name: 'Mozart' }.to_json }
 
-    before { put "/todos/#{todo_id}/items/#{id}", params: valid_attributes }
+    # before { put "/todos/#{todo_id}/items/#{id}", params: valid_attributes }
+    # ________________________________________________________________________________
+    before do
+      put "/todos/#{todo_id}/items/#{id}", params: valid_attributes, headers: headers
+    end
 
     context 'when item exists' do
       it 'returns status code 204' do
@@ -895,7 +1191,9 @@ RSpec.describe 'Items API' do
 
   # Test suite for DELETE /todos/:id
   describe 'DELETE /todos/:id' do
-    before { delete "/todos/#{todo_id}/items/#{id}" }
+    # before { delete "/todos/#{todo_id}/items/#{id}" }
+    # _____________________________________________________________________________
+    before { delete "/todos/#{todo_id}/items/#{id}", params: {}, headers: headers }
 
     it 'returns status code 204' do
       expect(response).to have_http_status(204)
@@ -904,58 +1202,7 @@ RSpec.describe 'Items API' do
 end
 ```
 
-### Item Controller
->___./app/controllers/items_controller.rb___
-```ruby
-class ItemsController < ApplicationController
-  before_action :set_todo
-  before_action :set_todo_item, only: %i[show update destroy]
-
-  # GET /todos/:todo_id/items
-  def index
-    json_response(@todo.items)
-  end
-
-  # GET /todos/:todo_id/items/:id
-  def show
-    json_response(@item)
-  end
-
-  # POST /todos/:todo_id/items
-  def create
-    @todo.items.create!(item_params)
-    json_response(@todo, :created)
-  end
-
-  # PUT /todos/:todo_id/items/:id
-  def update
-    @item.update(item_params)
-    head :no_content
-  end
-
-  # DELETE /todos/:todo_id/items/:id
-  def destroy
-    @item.destroy
-    head :no_content
-  end
-
-  private
-
-  def item_params
-    params.permit(:name, :done)
-  end
-
-  def set_todo
-    @todo = Todo.find(params[:todo_id])
-  end
-
-  def set_todo_item
-    @item = @todo.items.find_by!(id: params[:id]) if @todo
-  end
-end
-```
-Or, only requests
+Run the specs
 ```sh
-bbundle exec rspec ./spec/requests/
+bundle exec rspec
 ```
----
