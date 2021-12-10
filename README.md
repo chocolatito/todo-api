@@ -24,7 +24,7 @@ Example based on the tutorial:
     - [Todo Controller](#todo-controller)
     - [Item Request specs](#item-request-specs)
     - [Item Controller](#item-controller)
-
++ [Continues In](#continues-in)
 ---
 ## Requirements
 
@@ -730,3 +730,6 @@ Or, only requests
 bbundle exec rspec ./spec/requests/
 ```
 ---
+
+## Continues In
+> ***[Parte_2](https://github.com/chocolatito/todo-api/tree/parte_2)***
