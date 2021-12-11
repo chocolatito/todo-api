@@ -224,10 +224,6 @@ end
 The namespace syntax `class V2::TodosController < ApplicationController` is shorthand in Ruby to define a class within a namespace.
 
 ---
----
-
-
----
 ## Serializers
 Serializers allow for custom representations of JSON responses. [Active model serializers](https://github.com/rails-api/active_model_serializers) (gen `active_model_serializers` adding in [*Dependencies*](#dependencies)) make it easy to define which model attributes and relationships need to be serialized.
 
