@@ -49,9 +49,7 @@ end
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem 'tzinfo-data', platforms: %i[mingw mswin x64_mingw jruby]
-
-
+#
 gem 'active_model_serializers', '~> 0.10.0'
-# Implement token-based authentication.
 gem 'will_paginate', '~> 3.1.0'
-# gem 'faker'
+gem 'faker', '~> 2.19.0'

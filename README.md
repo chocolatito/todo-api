@@ -4,7 +4,7 @@ Example based on the tutorial:
 > [___Build a RESTful JSON API With Rails 5 - Part Three___](https://www.digitalocean.com/community/tutorials/build-a-restful-json-api-with-rails-5-part-three)
 
 Continuation of branch
-> [***`parte_1`***](https://github.com/chocolatito/todo-api/tree/parte_1)
+> [***`parte_2`***](https://github.com/chocolatito/todo-api/tree/parte_2)
 
 
 #### Using
@@ -78,9 +78,8 @@ Require __Log in__ and __Authorization through Json Web Token__
 ```ruby
 # [...]
 gem 'active_model_serializers', '~> 0.10.0'
-# [...]
-# Implement token-based authentication.
-  gem 'will_paginate', '~> 3.1.0'
+gem 'will_paginate', '~> 3.1.0'
+gem 'faker', '~> 2.19.0'
 # [...]
 ```
 
@@ -278,5 +277,4 @@ Seed the database by running:
 ```sh
 rake db:seed
 ```
-
 ---

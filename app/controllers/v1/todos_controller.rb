@@ -4,11 +4,13 @@ class TodosController < ApplicationController
 
   # GET /todos
   def index
-    # @todos = Todo.all
-    # json_response(@todos)
-    # ______________________
+    # # @todos = Todo.all
+    # # json_response(@todos)
+    # # ______________________
     # get current user todos
-    @todos = current_user.todos
+    # @todos = current_user.todos
+    # get paginated current user todos
+    @todos = current_user.todos.paginate(page: params[:page], per_page: 20)
     json_response(@todos)
   end
 
