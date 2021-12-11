@@ -27,6 +27,7 @@ Continuation of branch
 + [Authenticate Users](#authenticate-users)
 + [Authentication Controller](#authentication-controller)
     - [User controller](#user-controller)
++ [Continues In](#continues-in)
 
 ---
 ## Requirements
@@ -1206,3 +1207,6 @@ Run the specs
 ```sh
 bundle exec rspec
 ```
+---
+## Continues In
+> ***[Parte_3](https://github.com/chocolatito/todo-api/tree/parte_3)***
