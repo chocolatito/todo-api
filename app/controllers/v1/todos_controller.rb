@@ -1,3 +1,4 @@
+module V1
 class TodosController < ApplicationController
   before_action :set_todo, only: %i[show update destroy]
 
@@ -51,4 +52,5 @@ class TodosController < ApplicationController
   def set_todo
     @todo = Todo.find(params[:id])
   end
+end
 end
